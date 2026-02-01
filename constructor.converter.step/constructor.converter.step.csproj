@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="OCCSharp" Version="7.8.0-preview1" />
+      <PackageReference Include="Occt.NET" Version="7.9.0" />
+      <PackageReference Include="Xbim.Common" Version="6.0.563" />
+      <PackageReference Include="Xbim.Essentials" Version="6.0.563" />
+      <PackageReference Include="Xbim.Geometry" Version="6.3.873-netcore" />
+      <PackageReference Include="Xbim.Ifc4" Version="6.0.563" />
+      <PackageReference Include="Xbim.IO.Esent" Version="6.0.563" />
+    </ItemGroup>
+
+</Project>

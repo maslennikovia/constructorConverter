@@ -1,0 +1,14 @@
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\bin\Debug\net8.0\constructor.converter.exe
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\bin\Debug\net8.0\constructor.converter.deps.json
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\bin\Debug\net8.0\constructor.converter.runtimeconfig.json
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\bin\Debug\net8.0\constructor.converter.dll
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\bin\Debug\net8.0\constructor.converter.pdb
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.GeneratedMSBuildEditorConfig.editorconfig
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.AssemblyInfoInputs.cache
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.AssemblyInfo.cs
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.csproj.CoreCompileInputs.cache
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.dll
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\refint\constructor.converter.dll
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.pdb
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\constructor.converter.genruntimeconfig.cache
+C:\gitConstructor\Converter\constructor.converter\constructor.converter\obj\Debug\net8.0\ref\constructor.converter.dll
