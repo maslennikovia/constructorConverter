@@ -2,14 +2,12 @@ using constructor.converter.step.Models;
 
 namespace constructor.converter.step.Services.Abstractions;
 
-public interface IIfcService
+public interface IConstructorConverter
 {
-    public void CreateIfcModel(
-        StepFileInfo stepData,
+    public void ConvertToIfc(
+        string stepPath,
         string outputPath,
         IProgress<ConversionProgress> converterProgress,
-        string[] stages,
-        int stage,
         double linearDeflection = 0.01, 
         double angularDeflection = 0.5);
 }

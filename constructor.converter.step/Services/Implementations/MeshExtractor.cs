@@ -6,11 +6,20 @@ namespace constructor.converter.step.Services.Implementations;
 public class MeshExtractor
 {
     public TriangulationData ExtractTriangulation(TopoDS_Shape shape, 
+        IProgress<ConversionProgress> converterProgress,
+        string[] stages,
+        int stage,
         double linearDeflection = 0.01, 
         double angularDeflection = 0.5)
     {
         var result = new TriangulationData();
-        
+        var currentProgress = new ConversionProgress
+        {
+            Percentage = (0 * 100.0) / stages.Length,
+            Stage = stages[stage],
+            CurrentOperation = "Создание триангуляции"
+        };
+        converterProgress?.Report(currentProgress);
         // Создаем мешер с заданными параметрами
         var mesher = new BRepMesh_IncrementalMesh(shape, linearDeflection, 
             false, angularDeflection, true);
@@ -38,7 +47,6 @@ public class MeshExtractor
             
             faceExplorer.Next();
         }
-        
         return result;
     }
     

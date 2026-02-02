@@ -7,9 +7,13 @@ namespace constructor.converter.step.Services.Implementations;
 public class StepParser : IStepParser
 {
     public static bool _use_triangulation = false;
-    
-    public TriangulationData GetTriangulationFromStepFile
-    (string filePath, double linearDeflection = 0.01, 
+
+    public TriangulationData GetTriangulationFromStepFile(
+        string filePath,
+        IProgress<ConversionProgress> converterProgress,
+        string[] stages,
+        int stage,
+        double linearDeflection = 0.01,
         double angularDeflection = 0.5)
     {
         OcctConfiguration.Configure();
@@ -24,27 +28,38 @@ public class StepParser : IStepParser
             throw new Exception($"Не удалось прочитать файл: {status}");
         }
 
+        var currentProgress = new ConversionProgress
+        {
+            Percentage = (0 * 100.0) / stages.Length,
+            Stage = stages[stage],
+            CurrentOperation = "Выполняется чтение файла"
+        };
+        converterProgress?.Report(currentProgress);
         // Перевод всех корневых entities в shapes
         var progress = new Message_ProgressRange();
         reader.TransferRoots(progress);
-
-
+        
         // Получение всех shapes
         TopoDS_Shape shape = reader.OneShape();
         if (!shape.IsNull())
         {
             var mesher = new MeshExtractor();
-            return mesher.ExtractTriangulation(shape, linearDeflection,  angularDeflection);
+            return mesher.ExtractTriangulation(
+                shape, converterProgress, stages, stage++, linearDeflection, angularDeflection);
         }
 
         return new TriangulationData();
     }
 
-    public StepFileInfo ReadStepFile(string filePath, double linearDeflection = 0.01, 
-        double angularDeflection = 0.5)
+    public StepFileInfo ReadStepFile(
+        string filePath,
+        IProgress<ConversionProgress> converterProgress,
+        double linearDeflection = 0.01,
+        double angularDeflection = 0.5,
+        int stageCount = 1)
     {
         var result = new StepFileInfo();
-        
+
         OcctConfiguration.Configure();
 
         // Создание STEP reader
@@ -57,6 +72,13 @@ public class StepParser : IStepParser
             throw new Exception($"Не удалось прочитать файл: {status}");
         }
 
+        var currentProgress = new ConversionProgress
+        {
+            Percentage = (0 * 100.0) / stageCount,
+            Stage = "Чтение файла STEP",
+            CurrentOperation = "Выполняется чтение файла"
+        };
+        converterProgress?.Report(currentProgress);
         // Перевод всех корневых entities в shapes
         var progress = new Message_ProgressRange();
         reader.TransferRoots(progress);
@@ -97,8 +119,8 @@ public class StepParser : IStepParser
             BRepMesh_IncrementalMesh mesher = new BRepMesh_IncrementalMesh(
                 shape,
                 theLinDeflection: linearDeflection, // Отклонение (меньше = точнее, но больше треугольников)
-                isRelative:true,  // Относительное отклонение
-                theAngDeflection: angularDeflection,  // Угловой параметр (в радианах) 
+                isRelative: true, // Относительное отклонение
+                theAngDeflection: angularDeflection, // Угловой параметр (в радианах) 
                 isInParallel: true // Параллельная обработка
             );
             mesher.Perform(progress);
@@ -107,7 +129,13 @@ public class StepParser : IStepParser
 
         // Извлечение метаданных
         //ExtractMetadata(reader, result);
-
+        var finalProgress = new ConversionProgress
+        {
+            Percentage = (100.0) / stageCount,
+            Stage = "Чтение файла STEP",
+            CurrentOperation = "Чтение файла выполнено"
+        };
+        converterProgress?.Report(finalProgress);
         return result;
     }
 

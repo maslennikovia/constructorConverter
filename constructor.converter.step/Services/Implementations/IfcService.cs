@@ -28,7 +28,8 @@ public class IfcService : IIfcService
     private Dictionary<string, IfcCartesianPointList3D> _sharedPointLists = new();
     
     public void CreateIfcModelFromTriangulation(TriangulationData triangulation,
-        string outputPath)
+        string outputPath, IProgress<ConversionProgress> converterProgress, string[] stages,
+        int stage)
     {
         // Создание модели с использованием MemoryModel
         using (var model = IfcStore.Create(XbimSchemaVersion.Ifc4, XbimStoreType.EsentDatabase))
@@ -120,6 +121,9 @@ public class IfcService : IIfcService
     }
     public void CreateIfcModel(StepFileInfo stepData,
         string outputPath,
+        IProgress<ConversionProgress> converterProgress,
+        string[] stages,
+        int stage,
         double linearDeflection = 0.01, 
         double angularDeflection = 0.5)
     {
@@ -180,7 +184,7 @@ public class IfcService : IIfcService
             
             MeshExtractor extractor = new MeshExtractor();
             var shape = stepData.Shapes[0];
-            var triangulation = extractor.ExtractTriangulation(shape, linearDeflection, angularDeflection);
+            var triangulation = extractor.ExtractTriangulation(shape, converterProgress, stages, stage, linearDeflection, angularDeflection);
             int trianglesCount = triangulation.Triangles.Count;
             int elementCounter = 0;
             int batchSize = 100000;
