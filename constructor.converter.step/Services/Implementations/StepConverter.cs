@@ -18,6 +18,6 @@ public class StepConverter : IConstructorConverter
     {
         
         var triangulationData = new StepParser().GetTriangulationFromStepFile(stepPath, converterProgress, Stages, 0, linearDeflection, angularDeflection);
-        new IfcService().CreateIfcModelFromTriangulation(triangulationData, outputPath, converterProgress);
+        new IfcService().CreateIfcModelFromTriangulation(triangulationData, outputPath);
     }
 }

@@ -1,3 +1,4 @@
+using constructor.converter.step.Extensions;
 using constructor.converter.step.Models;
 using OCCSharp;
 
@@ -5,67 +6,117 @@ namespace constructor.converter.step.Services.Implementations;
 
 public class MeshExtractor
 {
-    public TriangulationData ExtractTriangulation(TopoDS_Shape shape, 
-        IProgress<ConversionProgress> converterProgress,
-        string[] stages,
-        int stage,
+    private Dictionary<int, TriangulationData> triangles =
+        new Dictionary<int, TriangulationData>();
+    
+    public ModelData ExtractTriangulation(
+        TDF_Label root,
         double linearDeflection = 0.01, 
         double angularDeflection = 0.5)
     {
-        var result = new TriangulationData();
-        var currentProgress = new ConversionProgress
+        TopLoc_Location rootLocation = new TopLoc_Location();
+        var rootEntity = ProcessLabel(root, rootLocation, linearDeflection, angularDeflection);
+        return new ModelData()
         {
-            Percentage = (0 * 100.0) / stages.Length,
-            Stage = stages[stage],
-            CurrentOperation = "Создание триангуляции"
+            Root = rootEntity,
+            Triangulations = triangles
         };
-        converterProgress?.Report(currentProgress);
-        // Создаем мешер с заданными параметрами
+    }
+
+    private ModelEntity ProcessLabel(TDF_Label label, TopLoc_Location parentLoc,
+        double linearDeflection, double angularDeflection)
+    {
+        ModelEntity parent = new ModelEntity();
+        var shape = XCAFDoc_ShapeTool.GetShape(label);
+        var shapeLocation = XCAFDoc_ShapeTool.GetLocation(label);
+        TopLoc_Location totalLoc = parentLoc.Multiplied(shapeLocation);
+
+        bool hasChildren = false;
+        var childIter = new TDF_ChildIterator(label, allLevels:false);
+        parent.Triangulation = TriangulateShape(shape, linearDeflection, angularDeflection, totalLoc.Transformation());
+        parent.Name = GetLabelName(label);
+        //string key = MakeUniqueKey(name, parent);
+        
+        while (childIter.More())
+        {
+            parent.Childrens.Add(
+                    ProcessLabel(childIter.Value(), totalLoc, linearDeflection, angularDeflection) );
+            childIter.Next();
+        }
+
+        return parent;
+    }
+    
+    private string GetLabelName(TDF_Label label)
+    {
+        TCollection_AsciiString name = new TCollection_AsciiString("");
+        TDF_Tool.Entry(label, name);
+        return name.ToCString();
+        return "Unnamed";
+    }
+    
+    private string MakeUniqueKey(string baseName, Dictionary<string, TriangulationData> dict)
+    {
+        if (!dict.ContainsKey(baseName))
+            return baseName;
+
+        int counter = 1;
+        while (dict.ContainsKey(baseName + "_" + counter))
+            counter++;
+        return baseName + "_" + counter;
+    }
+
+    private ElementTriangulation TriangulateShape(
+        TopoDS_Shape shape,
+        double linearDeflection,
+        double angularDeflection,
+        gp_Trsf parentTransf)
+    {
+        var result = new ElementTriangulation();
+        // Мешер
         var mesher = new BRepMesh_IncrementalMesh(shape, linearDeflection, 
             false, angularDeflection, true);
         mesher.Perform(new Message_ProgressRange());
-        
-        // Словарь для отслеживания уже добавленных вершин
-        var vertexMap = new Dictionary<(double, double, double), int>(
-            new DoubleTupleComparer());
-        int nextIndex = 0;
         
         // Обходим все грани в модели
         var faceExplorer = new TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_FACE, TopAbs_ShapeEnum.TopAbs_WIRE);
         while (faceExplorer.More())
         {
+            var faceTriangulationData = new TriangulationData();
             var face = TopoDS.Face(faceExplorer.Current());
             var location = new TopLoc_Location();
-            
             // Получаем триангуляцию для текущей грани
             var triangulation = BRep_Tool.Triangulation(face, location, 0);
             if (triangulation != null && triangulation.NbNodes() > 0)
             {
-                ProcessFaceTriangulationOptimized(triangulation, location, face, 
-                    result, vertexMap, ref nextIndex);
+                ProcessFaceTriangulationOptimized(triangulation, face,
+                    faceTriangulationData);
             }
             
+            faceTriangulationData.HasCode = TriangulationDataComparer.GetHashCode(faceTriangulationData);
+            triangles.TryAdd(faceTriangulationData.HasCode, faceTriangulationData);
+            
+            var globalTrsf = parentTransf.Multiplied(location.Transformation());
+            
+            result.Triangulations.Add((faceTriangulationData.HasCode, globalTrsf));
             faceExplorer.Next();
         }
+        
         return result;
     }
-    
-
     private void ProcessFaceTriangulationOptimized(
         Poly_Triangulation triangulation,
-        TopLoc_Location location,
         TopoDS_Face face,
-        TriangulationData result,
-        Dictionary<(double, double, double), int> vertexMap,
-        ref int nextIndex)
+        TriangulationData result)
     {
+        var vertexMap = new Dictionary<(double, double, double), int>(new DoubleTupleComparer());
         var nodesCount = triangulation.NbNodes();
         var trianglesCount = triangulation.NbTriangles();
         var hasNormals = triangulation.HasNormals();
-        
+        int nextIndex = 0;
         // 7. Используем массивы вместо списков для временных данных
         var faceVertexIndices = new int[nodesCount];
-        var transform = location.Transformation();
+        //var transform = location.Transformation();
         
         // 8. Подготавливаем массивы для кэширования
         var uvNodesExist = triangulation.HasUVNodes();
@@ -82,8 +133,10 @@ public class MeshExtractor
         // 9. Обрабатываем вершины
         for (int i = 0; i < nodesCount; i++)
         {
-            var vertex = triangulation.Node(i + 1).Transformed(transform);
-
+            var vertex = triangulation.Node(i + 1);
+            
+                //.Transformed(transform);
+            
             if (!vertexMap.TryGetValue((vertex.X(), vertex.Y(), vertex.Z()), out int vertexIndex))
             {
                 // Новая вершина

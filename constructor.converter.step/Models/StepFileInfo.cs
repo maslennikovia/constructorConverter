@@ -13,6 +13,8 @@ public class StepFileInfo
     public int SolidCount { get; set; }
     public int ShellCount { get; set; }
     public int FaceCount { get; set; }
+
+    public TDF_Label RootLabel { get; set; }
         
     public StepFileInfo()
     {

@@ -4,13 +4,13 @@ namespace constructor.converter.step.Services.Abstractions;
 
 public interface IStepParser
 {
-    public StepFileInfo ReadStepFile(string filePath,
+    /*public StepFileInfo ReadStepFile(string filePath,
         IProgress<ConversionProgress> converterProgress,
         double linearDeflection = 0.01, 
         double angularDeflection = 0.5,
-        int stageCount = 1);
+        int stageCount = 1);*/
 
-    TriangulationData GetTriangulationFromStepFile(
+    ModelData GetTriangulationFromStepFile(
         string filePath,
         IProgress<ConversionProgress> converterProgress,
         string[] stages,

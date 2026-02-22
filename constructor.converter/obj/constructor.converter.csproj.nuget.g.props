@@ -13,4 +13,7 @@
     <SourceRoot Include="C:\Users\Ilya\.nuget\packages\" />
     <SourceRoot Include="C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages\" />
   </ItemGroup>
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <PkgOcct_NET Condition=" '$(PkgOcct_NET)' == '' ">C:\Users\Ilya\.nuget\packages\occt.net\7.9.0</PkgOcct_NET>
+  </PropertyGroup>
 </Project>

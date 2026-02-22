@@ -10477,11 +10477,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\gitConstructor\\Converter\\constructor.converter\\constructor.converter.step\\constructor.converter.step.csproj",
+      "projectUniqueName": "C:\\gitConstructor\\Converter\\constructorConverter\\constructor.converter.step\\constructor.converter.step.csproj",
       "projectName": "constructor.converter.step",
-      "projectPath": "C:\\gitConstructor\\Converter\\constructor.converter\\constructor.converter.step\\constructor.converter.step.csproj",
+      "projectPath": "C:\\gitConstructor\\Converter\\constructorConverter\\constructor.converter.step\\constructor.converter.step.csproj",
       "packagesPath": "C:\\Users\\Ilya\\.nuget\\packages\\",
-      "outputPath": "C:\\gitConstructor\\Converter\\constructor.converter\\constructor.converter.step\\obj\\",
+      "outputPath": "C:\\gitConstructor\\Converter\\constructorConverter\\constructor.converter.step\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

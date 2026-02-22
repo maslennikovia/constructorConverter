@@ -46,6 +46,10 @@
         <None Update="Assets\Skrubber_azotnyy_AllCATPart.stp">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
+
+        <None Update="Assets\E-50.stp">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

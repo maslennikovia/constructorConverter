@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "Lh55Bokfmxg=",
+  "dgSpecHash": "BDrbqL0NnmU=",
   "success": true,
-  "projectFilePath": "C:\\gitConstructor\\Converter\\constructor.converter\\constructor.converter.step\\constructor.converter.step.csproj",
+  "projectFilePath": "C:\\gitConstructor\\Converter\\constructorConverter\\constructor.converter.step\\constructor.converter.step.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Ilya\\.nuget\\packages\\microsoft.database.managedesent\\2.0.3\\microsoft.database.managedesent.2.0.3.nupkg.sha512",
     "C:\\Users\\Ilya\\.nuget\\packages\\microsoft.extensions.dependencyinjection\\8.0.0\\microsoft.extensions.dependencyinjection.8.0.0.nupkg.sha512",

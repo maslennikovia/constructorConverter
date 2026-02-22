@@ -8,52 +8,52 @@ public class StepParser : IStepParser
 {
     public static bool _use_triangulation = false;
 
-    public TriangulationData GetTriangulationFromStepFile(
+    public ModelData GetTriangulationFromStepFile(
         string filePath,
-        IProgress<ConversionProgress> converterProgress,
+        IProgress<ConversionProgress>? converterProgress,
         string[] stages,
         int stage,
-        double linearDeflection = 0.01,
+        double linearDeflection = 1,
         double angularDeflection = 0.5)
     {
-        OcctConfiguration.Configure();
+        var app = XCAFApp_Application.GetApplication();
+        if (app == null) throw new Exception("Cannot get XCAF application");
 
-        // Создание STEP reader
-        STEPControl_Reader reader = new STEPControl_Reader();
-
-        // Чтение файла
+        // 2. Создаём документ
+        var format = new TCollection_ExtendedString("MDTV-XCAF");
+        TDocStd_Document doc = new TDocStd_Document(format);
+        app.InitDocument(doc); // обязательно!
+        GC.SuppressFinalize(doc);
+        // 3. Создаём STEP CAF reader
+        using var reader = new STEPCAFControl_Reader();
         IFSelect_ReturnStatus status = reader.ReadFile(filePath);
         if (status != IFSelect_ReturnStatus.IFSelect_RetDone)
-        {
             throw new Exception($"Не удалось прочитать файл: {status}");
-        }
 
-        var currentProgress = new ConversionProgress
-        {
-            Percentage = (0 * 100.0) / stages.Length,
-            Stage = stages[stage],
-            CurrentOperation = "Выполняется чтение файла"
-        };
-        converterProgress?.Report(currentProgress);
-        // Перевод всех корневых entities в shapes
+        // 4. Переносим данные в документ
         var progress = new Message_ProgressRange();
-        reader.TransferRoots(progress);
-        
-        // Получение всех shapes
-        TopoDS_Shape shape = reader.OneShape();
-        if (!shape.IsNull())
-        {
-            var mesher = new MeshExtractor();
-            return mesher.ExtractTriangulation(
-                shape, converterProgress, stages, stage++, linearDeflection, angularDeflection);
-        }
+        bool transferOk = reader.Transfer(doc, progress);
+        if (!transferOk)
+            throw new Exception("Не удалось перенести данные STEP в документ");
 
-        return new TriangulationData();
+        // 5. Получаем корневую метку и инструмент ShapeTool
+        TDF_Label root = doc.Main();
+        
+        var mesher = new MeshExtractor();
+        return mesher.ExtractTriangulation(
+            root, linearDeflection, angularDeflection);
+    }
+    
+    bool IsGeometricEntity(Standard_Transient ent)
+    {
+        Standard_Type type = ent.DynamicType();
+        string typeName = type.Name(); // например, "StepGeom_ManifoldSolidBrep"
+        return typeName.Contains("Brep") || typeName.Contains("Shell") || typeName.Contains("Solid");
     }
 
-    public StepFileInfo ReadStepFile(
+    /*public StepFileInfo ReadStepFile(
         string filePath,
-        IProgress<ConversionProgress> converterProgress,
+        IProgress<ConversionProgress>? converterProgress = null,
         double linearDeflection = 0.01,
         double angularDeflection = 0.5,
         int stageCount = 1)
@@ -61,7 +61,11 @@ public class StepParser : IStepParser
         var result = new StepFileInfo();
 
         OcctConfiguration.Configure();
-
+        var app = XCAFApp_Application.GetApplication();
+        
+        var xcaf = new TCollection_ExtendedString("MDTV-XCAF");
+        TDocStd_Document doc = new TDocStd_Document(xcaf);
+        app.NewDocument(xcaf, doc);
         // Создание STEP reader
         STEPControl_Reader reader = new STEPControl_Reader();
 
@@ -81,41 +85,29 @@ public class StepParser : IStepParser
         converterProgress?.Report(currentProgress);
         // Перевод всех корневых entities в shapes
         var progress = new Message_ProgressRange();
-        reader.TransferRoots(progress);
+        //reader.TransferRoots(progress);
 
-
+        
+        int nbRoots = reader.NbRootsForTransfer();
+        for (int i = 1; i <= nbRoots; i++)
+        {
+            // Транслируем i-й корень
+            if (reader.TransferRoot(i, progress))
+            {
+                TopoDS_Shape componentShape = reader.Shape(i); // или reader.Shape(1) если только один корень
+                // Триангулируем componentShape
+                //var triangData = TriangulateShape(componentShape, linearDeflection, angularDeflection);
+        
+                // Здесь нужно как-то получить имя компонента (см. следующий пункт)
+                /*string name = GetNameForRoot(reader, i);
+                result.Add(name, triangData);#1#
+            }
+        }
+        result.RootLabel = doc.Main();
         // Получение всех shapes
         TopoDS_Shape shape = reader.OneShape();
         if (!shape.IsNull())
         {
-            // Если это compound, разбираем на отдельные shapes
-            /*if (shape.ShapeType() == TopAbs_ShapeEnum.TopAbs_COMPOUND)
-            {
-                var explorer = new TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_SOLID,
-                    TopAbs_ShapeEnum.TopAbs_COMPSOLID);
-                while (explorer.More())
-                {
-                    var current = explorer.Current();
-                    var loc = current.Location();
-                    result.Shapes.Add(explorer.Current());
-                    explorer.Next();
-                }
-
-                // Если нет solids, ищем shells
-                if (result.Shapes.Count == 0)
-                {
-                    explorer = new TopExp_Explorer(shape, TopAbs_ShapeEnum.TopAbs_SHELL, TopAbs_ShapeEnum.TopAbs_SOLID);
-                    while (explorer.More())
-                    {
-                        result.Shapes.Add(explorer.Current());
-                        explorer.Next();
-                    }
-                }
-            }
-            else
-            {
-                result.Shapes.Add(shape);
-            }*/
             BRepMesh_IncrementalMesh mesher = new BRepMesh_IncrementalMesh(
                 shape,
                 theLinDeflection: linearDeflection, // Отклонение (меньше = точнее, но больше треугольников)
@@ -129,15 +121,8 @@ public class StepParser : IStepParser
 
         // Извлечение метаданных
         //ExtractMetadata(reader, result);
-        var finalProgress = new ConversionProgress
-        {
-            Percentage = (100.0) / stageCount,
-            Stage = "Чтение файла STEP",
-            CurrentOperation = "Чтение файла выполнено"
-        };
-        converterProgress?.Report(finalProgress);
         return result;
-    }
+    }*/
 
     /*static void ExtractMetadata(STEPControl_Reader reader, StepFileInfo result)
     {
