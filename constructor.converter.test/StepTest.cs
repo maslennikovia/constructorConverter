@@ -63,7 +63,7 @@ public class Tests
         try
         {
             string path = Path.Combine(AppContext.BaseDirectory, "Assets", "Skrubber_azotnyy_AllCATPart.stp");
-            string output = Path.Combine(AppContext.BaseDirectory, "Assets", "building_example5.ifc");
+            string output = Path.Combine(AppContext.BaseDirectory, "Assets", "Skrubber.ifc");
             var triangulationData = new StepParser().GetTriangulationFromStepFile(path, null, [], 1, 7, 3);
             new IfcService().CreateIfcModelFromTriangulation(triangulationData, output);
         }
