@@ -28,6 +28,7 @@ namespace constructor.converter.step.Services.Implementations;
 public class IfcService : IIfcService
 {
     private Dictionary<string, IfcCartesianPointList3D> _sharedPointLists = new();
+    private int count = 0;
 
     public void CreateIfcModelFromTriangulation(ModelData rootEntity,
         string outputPath)
@@ -105,7 +106,8 @@ public class IfcService : IIfcService
             buildingStorey,
             faceSetCache,
             ownerHistory,
-            context);
+            context,
+            null);
 
         // Сохранение модели
         model.SaveAs(outputPath, StorageType.Ifc);
@@ -119,7 +121,9 @@ public class IfcService : IIfcService
         IfcBuildingStorey buildingStorey,
         Dictionary<int, IfcRepresentationMap> faceSetCache,
         IfcOwnerHistory ownerHistory,
-        IfcGeometricRepresentationContext context)
+        IfcGeometricRepresentationContext context,
+        IfcLocalPlacement? parentPlacement,
+        IfcElementAssembly? elementAssembly = null)
     {
         foreach (var children in rootEntity.Childrens)
         {
@@ -127,7 +131,53 @@ public class IfcService : IIfcService
                 children.Childrens.Count <= 0) continue;
             if (children.Childrens.Count > 0)
             {
-                CreateAllElements(model, children, triangulations, buildingStorey, faceSetCache, ownerHistory, context);
+                IfcElementAssembly newElement;
+                IfcLocalPlacement placement;
+                using (var txn = model.BeginTransaction($"Create elements batch {children.Name}"))
+                {
+                    newElement = model.Instances.New<IfcElementAssembly>();
+                    newElement.Name = children.Name;
+                    newElement.GlobalId = XbimExtension.GenerateIfcGlobalId();
+                    newElement.OwnerHistory = ownerHistory;
+                    
+                    placement = model.Instances.New<IfcLocalPlacement>();
+                    var axis2Placement = model.Instances.New<IfcAxis2Placement3D>();
+                    var origin = model.Instances.New<IfcCartesianPoint>();
+                    var entityRoot = children.Location.TranslationPart();
+                    origin.X = entityRoot.X();
+                    origin.Y = entityRoot.Y();
+                    origin.Z = entityRoot.Z();
+                    axis2Placement.Location = origin;
+                    var (zx, zy, zz, xx, xy, xz) = GetRotation(children.Location);
+                    var zDir = model.Instances.New<IfcDirection>();
+                    zDir.X = zx;
+                    zDir.Y = zy;
+                    zDir.Z = zz;
+                    axis2Placement.Axis = zDir;
+                    
+                    var xDir = model.Instances.New<IfcDirection>();
+                    xDir.X = xx;
+                    xDir.Y = xy;
+                    xDir.Z = xz;
+                    axis2Placement.RefDirection = xDir;
+                    
+                    placement.RelativePlacement = axis2Placement;
+
+                    newElement.ObjectPlacement = placement;
+                    
+                    var aggregateRelation = model.Instances.New<IfcRelAggregates>();
+                    aggregateRelation.Name = children.Name + " links";
+                    aggregateRelation.GlobalId = XbimExtension.GenerateIfcGlobalId();
+                    aggregateRelation.OwnerHistory = ownerHistory;
+                    if (elementAssembly == null)
+                        aggregateRelation.RelatingObject = buildingStorey;
+                    else
+                        aggregateRelation.RelatingObject = elementAssembly;
+                    aggregateRelation.RelatedObjects.Add(newElement);
+                    txn.Commit();
+                }
+                
+                CreateAllElements(model, children, triangulations, buildingStorey, faceSetCache, ownerHistory, context, placement, newElement);
             }
             else
             {
@@ -139,20 +189,45 @@ public class IfcService : IIfcService
                     context,
                     ownerHistory,
                     children.Name ?? "Unnamed",
-                    faceSetCache);
-                buildingStorey.AddElement(element);
+                    faceSetCache,
+                    children.Location,
+                    parentPlacement);
+                var aggregateRelation = model.Instances.New<IfcRelAggregates>();
+                aggregateRelation.Name = children.Name + " links";
+                aggregateRelation.GlobalId = XbimExtension.GenerateIfcGlobalId();
+                aggregateRelation.OwnerHistory = ownerHistory;
+                if (elementAssembly == null)
+                    aggregateRelation.RelatingObject = buildingStorey;
+                else
+                    aggregateRelation.RelatingObject = elementAssembly;
+                aggregateRelation.RelatedObjects.Add(element);
                 txn.Commit();
             }
         }
     }
 
-    private static void CollectNodesWithGeometry(ModelEntity node, List<ModelEntity> result)
+    private static (double, double, double, double, double, double) GetRotation(gp_Trsf trsf)
     {
-        if (node.Triangulation != null && node.Triangulation.Triangulations.Any())
-            result.Add(node);
-
-        foreach (var child in node.Childrens)
-            CollectNodesWithGeometry(child, result);
+        gp_Mat rotPart = trsf.VectorialPart();
+        // Направления локальных осей в глобальной системе:
+        // Ось Z — результат применения трансформации к вектору (0,0,1)
+        double zx = rotPart.Value(1,3); // элементы матрицы: rotPart(row, col), индексация с 1? Уточните по документации OCCSharp
+        double zy = rotPart.Value(2,3);
+        double zz = rotPart.Value(3,3);
+        // Ось X — результат для (1,0,0)
+        double xx = rotPart.Value(1,1);
+        double xy = rotPart.Value(2,1);
+        double xz = rotPart.Value(3,1);
+        
+        // Нормализуем векторы (важно, если есть масштабирование)
+        double lenZ = Math.Sqrt(zx*zx + zy*zy + zz*zz);
+        double lenX = Math.Sqrt(xx*xx + xy*xy + xz*xz);
+        if (lenZ > 1e-10 && lenX > 1e-10)
+        {
+            zx /= lenZ; zy /= lenZ; zz /= lenZ;
+            xx /= lenX; xy /= lenX; xz /= lenX;
+        }
+        return (zx, zy, zz, xx, xy, xz);
     }
 
     private static IfcBuildingElementProxy CreateTriangulatedElement(
@@ -162,7 +237,9 @@ public class IfcService : IIfcService
         IfcGeometricRepresentationContext context,
         IfcOwnerHistory ownerHistory,
         string name,
-        Dictionary<int, IfcRepresentationMap> mapCache)
+        Dictionary<int, IfcRepresentationMap> mapCache,
+        gp_Trsf? location,
+        IfcLocalPlacement? parentPlacement)
     {
         var shape = model.Instances.New<IfcProductDefinitionShape>();
         var representation = model.Instances.New<IfcShapeRepresentation>();
@@ -180,12 +257,13 @@ public class IfcService : IIfcService
                 map = CreateMapForGeometry(data, model, context);
                 mapCache[face.Item1] = map;
             }
+           
             var mappedItem = model.Instances.New<IfcMappedItem>();
             mappedItem.MappingSource = map; // ссылка на карту
 
             // 3. Задаём трансформацию из матрицы face.Item2
-            var transform = CreateTransformationFromMatrix(face.Item2, model);
-            mappedItem.MappingTarget = transform;
+            //var transform = CreateTransformationFromMatrix(face.Item2, model);
+            //mappedItem.MappingTarget = transform;
             representation.Items.Add(mappedItem);
         }
         
@@ -201,11 +279,27 @@ public class IfcService : IIfcService
         var placement = model.Instances.New<IfcLocalPlacement>();
         var axis2Placement = model.Instances.New<IfcAxis2Placement3D>();
         var origin = model.Instances.New<IfcCartesianPoint>();
-        origin.X = 0;
-        origin.Y = 0;
-        origin.Z = 0;
+        var entityRoot = location.TranslationPart();
+        origin.X = entityRoot.X();
+        origin.Y = entityRoot.Y();
+        origin.Z = entityRoot.Z();
+        
+        var (zx, zy, zz, xx, xy, xz) = GetRotation(location);
+        var zDir = model.Instances.New<IfcDirection>();
+        zDir.X = zx;
+        zDir.Y = zy;
+        zDir.Z = zz;
+        axis2Placement.Axis = zDir;
+                    
+        var xDir = model.Instances.New<IfcDirection>();
+        xDir.X = xx;
+        xDir.Y = xy;
+        xDir.Z = xz;
+        axis2Placement.RefDirection = xDir;
         axis2Placement.Location = origin;
         placement.RelativePlacement = axis2Placement;
+        if (parentPlacement != null)
+            placement.PlacementRelTo = parentPlacement;
         element.ObjectPlacement = placement;
 
         return element;
@@ -215,63 +309,40 @@ public class IfcService : IIfcService
         gp_Trsf trsf,
         IModel model)
     {
-        // Извлечение смещения (translation)
-        gp_XYZ translation = trsf.TranslationPart();
-
-        // Масштабный коэффициент (равномерный)
-        double scale = trsf.ScaleFactor();
-
-        // Создание оператора трансформации
         var op = model.Instances.New<IfcCartesianTransformationOperator3D>();
 
-        // Установка точки смещения
+        // Смещение
+        var translation = trsf.TranslationPart();
         var origin = model.Instances.New<IfcCartesianPoint>();
         origin.X = translation.X();
         origin.Y = translation.Y();
         origin.Z = translation.Z();
         op.LocalOrigin = origin;
 
-        // Если масштаб не равен 1, сохраняем его
-        if (Math.Abs(scale - 1.0) > 1e-9)
-            op.Scale = scale;
+        // Вращательная часть (матрица 3x3)
+        var mat = trsf.VectorialPart();
 
-        // Получение элементов матрицы поворота (3x3) из gp_Trsf
-        double m11 = trsf.Value(1, 1);
-        double m12 = trsf.Value(1, 2);
-        double m13 = trsf.Value(1, 3);
-        double m21 = trsf.Value(2, 1);
-        double m22 = trsf.Value(2, 2);
-        double m23 = trsf.Value(2, 3);
-        double m31 = trsf.Value(3, 1);
-        double m32 = trsf.Value(3, 2);
-        double m33 = trsf.Value(3, 3);
+        // Ось X (применяем трансформацию к вектору (1,0,0))
+        double xx = mat.Value(1,1); // первый столбец
+        double xy = mat.Value(2,1);
+        double xz = mat.Value(3,1);
 
-        // Нормализация столбцов для получения направлений (без учёта масштаба)
-        double xDirX = m11 / scale;
-        double xDirY = m21 / scale;
-        double xDirZ = m31 / scale;
+        // Ось Y (применяем к (0,1,0))
+        double yx = mat.Value(1,2);
+        double yy = mat.Value(2,2);
+        double yz = mat.Value(3,2);
 
-        double yDirX = m12 / scale;
-        double yDirY = m22 / scale;
-        double yDirZ = m32 / scale;
-
-        double zDirX = m13 / scale;
-        double zDirY = m23 / scale;
-        double zDirZ = m33 / scale;
-
-        // Задание осей направления
+        // Предполагаем, что масштаб отсутствует (длины векторов = 1). Если есть масштаб,
+        // можно создать IfcCartesianTransformationOperator3DnonUniform и задать Scale/Scale2.
         var axis1 = model.Instances.New<IfcDirection>();
-        axis1.DirectionRatios.AddRange([new IfcReal(xDirX), new IfcReal(xDirY), new IfcReal(xDirZ)]);
+        axis1.X = xx; axis1.Y = xy; axis1.Z = xz;
         op.Axis1 = axis1;
 
         var axis2 = model.Instances.New<IfcDirection>();
-        axis2.DirectionRatios.AddRange([new IfcReal(yDirX), new IfcReal(yDirY), new IfcReal(yDirZ)]);
+        axis2.X = yx; axis2.Y = yy; axis2.Z = yz;
         op.Axis2 = axis2;
 
-        var axis3 = model.Instances.New<IfcDirection>();
-        axis3.DirectionRatios.AddRange([new IfcReal(zDirX), new IfcReal(zDirY), new IfcReal(zDirZ)]);
-        op.Axis3 = axis3;
-
+        // Масштаб по умолчанию 1.0 (можно не задавать)
         return op;
     }
     

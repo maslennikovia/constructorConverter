@@ -23,27 +23,35 @@ public class MeshExtractor
         };
     }
 
-    private ModelEntity ProcessLabel(TDF_Label label, TopLoc_Location parentLoc,
+    private ModelEntity ProcessLabel(
+        TDF_Label label, 
+        TopLoc_Location parentLoc,
         double linearDeflection, double angularDeflection)
     {
         ModelEntity parent = new ModelEntity();
-        var shape = XCAFDoc_ShapeTool.GetShape(label);
-        var shapeLocation = XCAFDoc_ShapeTool.GetLocation(label);
-        TopLoc_Location totalLoc = parentLoc.Multiplied(shapeLocation);
-
-        bool hasChildren = false;
-        var childIter = new TDF_ChildIterator(label, allLevels:false);
-        parent.Triangulation = TriangulateShape(shape, linearDeflection, angularDeflection, totalLoc.Transformation());
+        
         parent.Name = GetLabelName(label);
         //string key = MakeUniqueKey(name, parent);
-        
+        var childIter = new TDF_ChildIterator(label, allLevels:false);
+        var hasChildren = false;
+        var shape = XCAFDoc_ShapeTool.GetShape(label);
+        var shapeLocation = XCAFDoc_ShapeTool.GetLocation(label);
+        TopLoc_Location? totalLocWithLabel = parentLoc.Multiplied(shapeLocation);
+        parent.Location = totalLocWithLabel.Transformation();
         while (childIter.More())
         {
+            hasChildren = true;
             parent.Childrens.Add(
-                    ProcessLabel(childIter.Value(), totalLoc, linearDeflection, angularDeflection) );
+                    ProcessLabel(childIter.Value(), totalLocWithLabel, linearDeflection, angularDeflection));
             childIter.Next();
         }
 
+        if (!hasChildren)
+        {
+            parent.Triangulation = TriangulateShape(shape, linearDeflection,
+                angularDeflection, totalLocWithLabel.Transformation());
+        }
+            
         return parent;
     }
     
@@ -96,8 +104,8 @@ public class MeshExtractor
             faceTriangulationData.HasCode = TriangulationDataComparer.GetHashCode(faceTriangulationData);
             triangles.TryAdd(faceTriangulationData.HasCode, faceTriangulationData);
             
-            var globalTrsf = parentTransf.Multiplied(location.Transformation());
-            
+           // var globalTrsf = parentTransf.Multiplied(location.Transformation());
+            var globalTrsf = location.Transformation();
             result.Triangulations.Add((faceTriangulationData.HasCode, globalTrsf));
             faceExplorer.Next();
         }
