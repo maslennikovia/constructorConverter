@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using constructor.converter.step.Extensions;
 using constructor.converter.step.Models;
 using OCCSharp;
@@ -28,31 +29,40 @@ public class MeshExtractor
         TopLoc_Location parentLoc,
         double linearDeflection, double angularDeflection)
     {
-        ModelEntity parent = new ModelEntity();
+        ModelEntity element = new ModelEntity();
         
-        parent.Name = GetLabelName(label);
+        element.Name = GetLabelName(label);
         //string key = MakeUniqueKey(name, parent);
         var childIter = new TDF_ChildIterator(label, allLevels:false);
         var hasChildren = false;
         var shape = XCAFDoc_ShapeTool.GetShape(label);
         var shapeLocation = XCAFDoc_ShapeTool.GetLocation(label);
-        TopLoc_Location? totalLocWithLabel = parentLoc.Multiplied(shapeLocation);
-        parent.Location = totalLocWithLabel.Transformation();
+
+        
+        string pattern = @"^0:1:1:\d+$";
+        bool isValid = Regex.IsMatch(element.Name, pattern);
+        if (isValid && element.Name != "0:1:1:1")
+        {
+            return element;
+        }
+        
         while (childIter.More())
         {
+            TopLoc_Location? totalLocWithLabel = parentLoc.Multiplied(shapeLocation);
+            element.Location = totalLocWithLabel.Transformation();
             hasChildren = true;
-            parent.Childrens.Add(
+            element.Childrens.Add(
                     ProcessLabel(childIter.Value(), totalLocWithLabel, linearDeflection, angularDeflection));
             childIter.Next();
         }
 
         if (!hasChildren)
         {
-            parent.Triangulation = TriangulateShape(shape, linearDeflection,
-                angularDeflection, totalLocWithLabel.Transformation());
+            element.Triangulation = TriangulateShape(shape, linearDeflection,
+                angularDeflection, parentLoc.Transformation());
         }
             
-        return parent;
+        return element;
     }
     
     private string GetLabelName(TDF_Label label)
@@ -97,15 +107,20 @@ public class MeshExtractor
             var triangulation = BRep_Tool.Triangulation(face, location, 0);
             if (triangulation != null && triangulation.NbNodes() > 0)
             {
+                var trfm = location.Transformation();
                 ProcessFaceTriangulationOptimized(triangulation, face,
-                    faceTriangulationData);
+                    faceTriangulationData, trfm);
             }
             
             faceTriangulationData.HasCode = TriangulationDataComparer.GetHashCode(faceTriangulationData);
             triangles.TryAdd(faceTriangulationData.HasCode, faceTriangulationData);
+
+
             
-           // var globalTrsf = parentTransf.Multiplied(location.Transformation());
-            var globalTrsf = location.Transformation();
+            //if (trfm.G)
+            //var globalTrsf = trfm.Multiplied(parentTransf);
+            var globalTrsf = parentTransf.Multiplied(location.Transformation());
+            //var globalTrsf = location.Transformation();
             result.Triangulations.Add((faceTriangulationData.HasCode, globalTrsf));
             faceExplorer.Next();
         }
@@ -115,7 +130,8 @@ public class MeshExtractor
     private void ProcessFaceTriangulationOptimized(
         Poly_Triangulation triangulation,
         TopoDS_Face face,
-        TriangulationData result)
+        TriangulationData result,
+        gp_Trsf trsf)
     {
         var vertexMap = new Dictionary<(double, double, double), int>(new DoubleTupleComparer());
         var nodesCount = triangulation.NbNodes();
@@ -142,8 +158,10 @@ public class MeshExtractor
         for (int i = 0; i < nodesCount; i++)
         {
             var vertex = triangulation.Node(i + 1);
-            
-                //.Transformed(transform);
+
+            var point = new gp_XYZ(vertex.X(), vertex.Y(), vertex.Z());
+            trsf.Transforms(point);
+
             
             if (!vertexMap.TryGetValue((vertex.X(), vertex.Y(), vertex.Z()), out int vertexIndex))
             {

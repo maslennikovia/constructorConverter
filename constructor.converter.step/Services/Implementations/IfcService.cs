@@ -246,7 +246,6 @@ public class IfcService : IIfcService
         representation.ContextOfItems = context;
         representation.RepresentationType = "MappedRepresentation";
         representation.RepresentationIdentifier = "Body";
-        
         foreach (var face in triangulation.Triangulations)
         {
             if (!triangulations.TryGetValue(face.Item1, out var data))
@@ -254,16 +253,18 @@ public class IfcService : IIfcService
             
             if (!mapCache.TryGetValue(face.Item1, out var map))
             {
-                map = CreateMapForGeometry(data, model, context);
+                map = CreateMapForGeometry(data, model, context, face.Item2);
                 mapCache[face.Item1] = map;
             }
+            
+            
            
             var mappedItem = model.Instances.New<IfcMappedItem>();
             mappedItem.MappingSource = map; // ссылка на карту
 
             // 3. Задаём трансформацию из матрицы face.Item2
-            //var transform = CreateTransformationFromMatrix(face.Item2, model);
-            //mappedItem.MappingTarget = transform;
+            var transform = CreateTransformationFromMatrix(face.Item2, model);
+            mappedItem.MappingTarget = transform;
             representation.Items.Add(mappedItem);
         }
         
@@ -309,47 +310,55 @@ public class IfcService : IIfcService
         gp_Trsf trsf,
         IModel model)
     {
-        var op = model.Instances.New<IfcCartesianTransformationOperator3D>();
-
-        // Смещение
+        // Получаем матрицу линейной части и вектор переноса
+        var mat = trsf.VectorialPart();
         var translation = trsf.TranslationPart();
+
+        // Извлекаем столбцы матрицы (образы осей X, Y, Z)
+        double[] colX = { mat.Value(1, 1), mat.Value(2, 1), mat.Value(3, 1) };
+        double[] colY = { mat.Value(1, 2), mat.Value(2, 2), mat.Value(3, 2) };
+        double[] colZ = { mat.Value(1, 3), mat.Value(2, 3), mat.Value(3, 3) };
+
+        // Масштаб – используем ScaleFactor() для точности (всегда положительный)
+        double scale = trsf.ScaleFactor();
+
+        // Нормализуем векторы, чтобы получить единичные направления
+        double[] dirX = colX.Select(v => v / scale).ToArray();
+        double[] dirY = colY.Select(v => v / scale).ToArray();
+        double[] dirZ = colZ.Select(v => v / scale).ToArray();
+
+        // Создаём оси IFC
+        var axis1 = model.Instances.New<IfcDirection>();
+        axis1.X = dirX[0]; axis1.Y = dirX[1]; axis1.Z = dirX[2];
+
+        var axis2 = model.Instances.New<IfcDirection>();
+        axis2.X = dirY[0]; axis2.Y = dirY[1]; axis2.Z = dirY[2];
+
+        var axis3 = model.Instances.New<IfcDirection>();
+        axis3.X = dirZ[0]; axis3.Y = dirZ[1]; axis3.Z = dirZ[2];
+
+        // Точка начала
         var origin = model.Instances.New<IfcCartesianPoint>();
         origin.X = translation.X();
         origin.Y = translation.Y();
         origin.Z = translation.Z();
+
+        // Создаём оператор
+        var op = model.Instances.New<IfcCartesianTransformationOperator3D>();
         op.LocalOrigin = origin;
-
-        // Вращательная часть (матрица 3x3)
-        var mat = trsf.VectorialPart();
-
-        // Ось X (применяем трансформацию к вектору (1,0,0))
-        double xx = mat.Value(1,1); // первый столбец
-        double xy = mat.Value(2,1);
-        double xz = mat.Value(3,1);
-
-        // Ось Y (применяем к (0,1,0))
-        double yx = mat.Value(1,2);
-        double yy = mat.Value(2,2);
-        double yz = mat.Value(3,2);
-
-        // Предполагаем, что масштаб отсутствует (длины векторов = 1). Если есть масштаб,
-        // можно создать IfcCartesianTransformationOperator3DnonUniform и задать Scale/Scale2.
-        var axis1 = model.Instances.New<IfcDirection>();
-        axis1.X = xx; axis1.Y = xy; axis1.Z = xz;
         op.Axis1 = axis1;
-
-        var axis2 = model.Instances.New<IfcDirection>();
-        axis2.X = yx; axis2.Y = yy; axis2.Z = yz;
         op.Axis2 = axis2;
+        op.Axis3 = axis3;       // явно задаём третью ось
+        op.Scale = scale;        // передаём масштаб
 
-        // Масштаб по умолчанию 1.0 (можно не задавать)
         return op;
     }
     
     private static IfcRepresentationMap CreateMapForGeometry(
         TriangulationData data,
         IModel model,
-        IfcGeometricRepresentationContext context)
+        IfcGeometricRepresentationContext context,
+        gp_Trsf trsf)
     {
         // Создаём представление внутри карты
         var mapRepresentation = model.Instances.New<IfcShapeRepresentation>();
@@ -365,8 +374,14 @@ public class IfcService : IIfcService
         var pointList = model.Instances.New<IfcCartesianPointList3D>();
         for (int i = 0; i < data.Vertices.Count; i++)
         {
+            /*gp_XYZ point = new gp_XYZ(data.Vertices[i].X, data.Vertices[i].Y, data.Vertices[i].Z);
+            trsf.Transforms(point);*/
+            
             pointList.CoordList.GetAt(i).AddRange(new IfcLengthMeasure[]
             {
+                /*point.X(),
+                point.Y(),
+                point.Z()*/
                 data.Vertices[i].X,
                 data.Vertices[i].Y,
                 data.Vertices[i].Z
